@@ -107,6 +107,7 @@
                                             <property name="wlp.version" value="${wlpVersion}" />
                                         </ant>
                                         <ant dir="${basedir}" antfile="${basedir}\build.xml" target="deploy" />
+                                        <ant dir="${basedir}" antfile="${basedir}\build.xml" target="deploy-xml" />
                                     </target>
                                 </configuration>
                             </execution>
@@ -118,7 +119,8 @@
                                 </goals>
                                 <configuration>
                                     <target>
-                                        <ant dir="${basedir}" antfile="${basedir}\build.xml" target="undeploy" />
+                                        <ant dir="${basedir}" antfile="${basedir}\build.xml" target="undeploy-xml" />
+                                        <ant dir="${basedir}" antfile="${basedir}\build.xml" target="undeploy" /> 
                                     </target>
                                 </configuration>
                             </execution>
@@ -148,6 +150,11 @@
                                             used if the server is installed by the installServer target.-->
                                             <property name="wlp.install.dir" value="${wlpInstallDir}" />
                                         </ant>
+                                        <ant dir="${basedir}" antfile="${basedir}\build.xml" target="deploy-xml" >
+                                            <!-- This overrides the custom property in the build.xml that it's
+                                            used if the server is installed by the installServer target.-->
+                                            <property name="wlp.install.dir" value="${wlpInstallDir}" />
+                                        </ant>
                                     </target>
                                 </configuration>
                             </execution>
@@ -159,6 +166,9 @@
                                 </goals>
                                 <configuration>
                                     <target>
+                                        <ant dir="${basedir}"  antfile="${basedir}\build.xml" target="undeploy-xml" >
+                                            <property name="wlp.install.dir" value="${wlpInstallDir}" />
+                                        </ant>
                                         <ant dir="${basedir}"  antfile="${basedir}\build.xml" target="undeploy" >
                                             <property name="wlp.install.dir" value="${wlpInstallDir}" />
                                         </ant>
