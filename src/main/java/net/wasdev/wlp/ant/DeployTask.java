@@ -15,7 +15,6 @@
  */
 package net.wasdev.wlp.ant;
 
-import java.io.IOException;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,22 +22,27 @@ import java.util.List;
 import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.DirectoryScanner;
 import org.apache.tools.ant.types.FileSet;
-import org.apache.tools.ant.util.FileUtils;
+
+import net.wasdev.wlp.deploy.*;
 
 /**
  * deploy ant tasks
  */
 public class DeployTask extends AbstractTask {
 
-    private static final String START_APP_MESSAGE_CODE_REG = "CWWKZ0001I.*";
+    protected static final String START_APP_MESSAGE_CODE_REG = "CWWKZ0001I.*";
 
     private static final long APP_START_TIMEOUT_DEFAULT = 30 * 1000;
 
     private final List<FileSet> fileSets = new ArrayList<FileSet>();
     private File appFile;
     private String deployName;
+    private String deployDestination = "dropins";
+    private long appStartTimeout;
 
     private String timeout;
+    private String contextRoot;
+    private String commonLibraryRef;
 
     @Override
     public void execute() {
@@ -49,60 +53,90 @@ public class DeployTask extends AbstractTask {
         if ((appFile == null) && (fileSets.size() == 0)) {
             throw new BuildException(getMessage("error.fileset.set"), getLocation());
         }
+        
+        if (!deployDestination.equals("dropins") && !deployDestination.equals("configDropins")) {
+            throw new BuildException(getMessage("error.parameter.value.invalid"));
+        }
+        
         if (deployName != null && appFile == null) {
             throw new BuildException(getMessage("error.file.set"), getLocation());
         }
+        
+        if (deployDestination.equals("dropins") && (contextRoot != null || commonLibraryRef != null)) {
+            throw new BuildException(getMessage("error.deploy.dropins.invalid.parameter"), getLocation());
+        }
+        if (!deployDestination.equals("dropins") && deployName != null) {
+            throw new BuildException(getMessage("error.deploy.configdropins.invalid.parameter"), getLocation());
+        }
 
-        long appStartTimeout = APP_START_TIMEOUT_DEFAULT;
+        appStartTimeout = APP_START_TIMEOUT_DEFAULT;
         if (timeout != null && !timeout.equals("")) {
             appStartTimeout = Long.valueOf(timeout);
         }
-
-        File dropInFolder = new File(serverConfigDir, "dropins");
+        
+        if (deployDestination.equals("dropins")) {
+            deployToDropins();
+        } else {
+            deployToConfigDropins();
+        }
+        
+    }
+    
+    private void deployToDropins() {
+    	File dropInFolder = new File(serverConfigDir, "dropins");
+    	
+    	DeployTypes deploy=new DeployTypes();
+    	deploy.setServerOutputDir(serverOutputDir);
+    	deploy.setAppStartTimeout(appStartTimeout);
+    	
         // deploy app specified as a file
-        if (appFile != null) {
-            if (!appFile.exists()) {
-                throw new BuildException(getMessage("error.deploy.file.noexist", appFile), getLocation());
-            } else if (appFile.isDirectory()) {
-                throw new BuildException(getMessage("error.deploy.file.isdirectory", appFile), getLocation());
-            }
+        if (checkAppFile(appFile)) {
             File destFile = new File(dropInFolder, deployName == null ? appFile.getName() : deployName);
-            deploy(appStartTimeout, appFile, destFile);
+            deploy.dropins(appFile, destFile);
         }
         // deploy apps specified as fileSets
         List<File> files = scanFileSets();
         for (File file : files) {
             File destFile = new File(dropInFolder, file.getName());
-            deploy(appStartTimeout, file, destFile);
+            deploy.dropins(file, destFile);
         }
     }
 
-    private void deploy(long appStartTimeout, File srcFile, File destFile) {
-        log(getMessage("info.deploy.app", srcFile.getPath()));
-        try {
-            FileUtils.getFileUtils().copyFile(srcFile, destFile, null, true);
-        } catch (IOException e) {
-            throw new BuildException(getMessage("error.deploy.fail"));
+    private void deployToConfigDropins() {
+        File overridesFolder = new File(serverConfigDir, "configDropins/overrides");
+        
+        DeployTypes deploy=new DeployTypes();
+        deploy.setServerOutputDir(serverOutputDir);
+        deploy.setAppStartTimeout(appStartTimeout);
+        deploy.setCommonLibraryRef(commonLibraryRef);
+        deploy.setContextRoot(contextRoot);
+        
+        if (!overridesFolder.exists()) {
+            if (!overridesFolder.mkdirs()) {
+                throw new BuildException(getMessage("error.deploy.fail", overridesFolder.getPath()));
+            }
         }
-        // Check start message code
-        String startMessage = START_APP_MESSAGE_CODE_REG + getFileName(destFile.getName());
-        if (waitForStringInLog(startMessage, appStartTimeout, getLogFile()) == null) {
-            throw new BuildException(getMessage("error.deploy.fail", srcFile.getPath()));
+        
+        if (checkAppFile(appFile)) {
+            deploy.configDropins(appFile, overridesFolder);
+        }
+        
+        List<File> files = scanFileSets();
+        for (File app : files) {
+        	deploy.configDropins(app, overridesFolder);
         }
     }
 
-    /**
-     * Adds a set of files (nested fileset attribute).
-     *
-     * @param fs
-     *            the file set to add
-     */
-    public void addFileset(FileSet fs) {
-        fileSets.add(fs);
-    }
-
-    public void setFile(File appFile) {
-        this.appFile = appFile;
+    public boolean checkAppFile(File file) {
+    	if (file != null) {
+            if (!file.exists()) {
+                throw new BuildException(getMessage("error.deploy.file.noexist", file), getLocation());
+            } else if (file.isDirectory()) {
+                throw new BuildException(getMessage("error.deploy.file.isdirectory", file), getLocation());
+            }
+            return true;
+        }
+    	return false;
     }
 
     /**
@@ -134,6 +168,19 @@ public class DeployTask extends AbstractTask {
     }
 
     /**
+     * Adds a set of files (nested fileset attribute).
+     *
+     * @param fs the file set to add
+     */
+    public void addFileset(FileSet fs) {
+        fileSets.add(fs);
+    }
+
+    public void setFile(File appFile) {
+        this.appFile = appFile;
+    }
+
+    /**
      * @return the timeout
      */
     public String getTimeout() {
@@ -158,13 +205,53 @@ public class DeployTask extends AbstractTask {
      * @param name the deployName to set
      */
     public void setDeployName(String name) {
-        if (name != null) {
-            name = name.trim();
-            if (name.isEmpty()) {
-                throw new BuildException(getMessage("error.parameter.empty", "deployName"));
-            }
-        }
+        emptyParameter(name, "deployName");
         this.deployName = name;
+    }
+    
+    /**
+     * @return the deploy destination
+     */
+    public String getDeployDestination() {
+        return deployDestination;
+    }
+
+    /**
+     * @param deployDestination The deploy destination to set
+     */
+    public void setDeployDestination(String deployDestination) {
+    	emptyParameter(deployDestination, "deployDestination");
+        this.deployDestination = deployDestination;
+    }
+
+    /**
+     * @return the contextRoot
+     */
+    public String contextRoot() {
+        return contextRoot;
+    }
+
+    /**
+     * @param contextRoot the contextRoot to set
+     */
+    public void setContextRoot(String contextRoot) {
+    	emptyParameter(contextRoot, "contextRoot");
+        this.contextRoot = contextRoot;
+    }
+
+    /**
+     * @return the commonLibraryRef
+     */
+    public String getCommonLibraryRef() {
+        return commonLibraryRef;
+    }
+
+    /**
+     * @param commonLibraryRef the commonLibraryRef to set
+     */
+    public void setCommonLibraryRef(String commomLibraryRef) {
+        emptyParameter(commonLibraryRef, "commonLibraryRef");
+        this.commonLibraryRef = commomLibraryRef;
     }
 
 }

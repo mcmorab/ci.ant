@@ -451,4 +451,13 @@ public abstract class AbstractTask extends Task {
     protected String getMessage(String key, Object... args) {
         return MessageFormat.format(messages.getString(key), args);
     }
+    
+    public void emptyParameter(String value, String parameter) {
+    	if (value != null) {
+    		value = value.trim();
+        	if (value.isEmpty()) {
+        		 throw new BuildException(getMessage("error.parameter.empty", parameter));
+        	}
+        }
+    }
 }

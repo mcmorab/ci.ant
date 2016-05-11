@@ -37,10 +37,15 @@ public class UndeployTask extends AbstractTask {
     private PatternSet pattern;
     private String timeout;
     private static final long APP_STOP_TIMEOUT_DEFAULT = 30 * 1000;
+    private String undeployLocation = "dropins";
 
     @Override
     public void execute() {
         super.initTask();
+        
+        if (!undeployLocation.equals("dropins") && !undeployLocation.equals("configDropins")) {
+            throw new BuildException(MessageFormat.format(messages.getString("error.parameter.value.invalid"), "from"));
+        }
 
         final List<File> files = scanFileSets();
 
@@ -62,11 +67,11 @@ public class UndeployTask extends AbstractTask {
     }
 
     private List<File> scanFileSets() throws BuildException {
-        File dropinsDir = new File(serverConfigDir, "dropins");
+        File undeployDir = new File(serverConfigDir, undeployLocation.equals("dropins") ? "dropins" : "configDropins/overrides");
         final List<File> list = new ArrayList<File>();
 
         if (fileName != null) {
-            File fileUndeploy = new File(dropinsDir, fileName);
+            File fileUndeploy = new File(undeployDir, undeployLocation.equals("dropins") ? fileName : fileName + ".xml");
             if (fileUndeploy.exists()) {
                 list.add(fileUndeploy);
             } else {
@@ -74,7 +79,7 @@ public class UndeployTask extends AbstractTask {
             }
         } else {
             FileSet dropins = new FileSet();
-            dropins.setDir(dropinsDir);
+            dropins.setDir(undeployDir);
 
             if (pattern != null) {
                 dropins.appendIncludes(pattern.getIncludePatterns(getProject()));
@@ -86,7 +91,7 @@ public class UndeployTask extends AbstractTask {
             final String[] names = ds.getIncludedFiles();
 
             if (names.length == 0) {
-                throw new BuildException(messages.getString("error.undeploy.fileset.invalid"));
+                throw new BuildException(messages.getString("info.undeploy.fileset.empty"));
             }
 
             for (String element : names) {
@@ -120,6 +125,20 @@ public class UndeployTask extends AbstractTask {
 
     public void addPatternset(PatternSet pattern) {
         this.pattern=pattern;
+    }
+    
+    /**
+     * @return undeployLocation
+     */
+    public String getUndeployLocation() {
+         return undeployLocation;
+    }
+
+    /**
+     * @param undeployLocation The location from the app will be undeployed.
+     */
+    public void setUndeployLocation(String undeployLocation) {
+        this.undeployLocation = undeployLocation;
     }
 
 }
